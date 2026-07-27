@@ -1,0 +1,63 @@
+---
+name: worktree-manager
+description: Créer un git worktree pour une tâche, et lister/nettoyer les worktrees dont la branche a une MR GitLab mergée. Déclencheurs : "crée un worktree", "nettoie les worktrees", "worktree pour STK-xxx".
+---
+
+# Worktree Manager
+
+Outil autonome (bash + glab + python3, aucune dépendance externe) pour gérer les worktrees
+git au quotidien : création à la demande, et repérage de ceux à nettoyer une fois la MR mergée.
+
+Prérequis : `glab` installé et authentifié sur l'instance GitLab du repo (`glab auth status`),
+`python3` disponible.
+
+## Créer un worktree
+
+```bash
+scripts/wt-create.sh <nom-branche> [chemin-du-repo] [branche-de-base]
+```
+
+- Crée un dossier `wt-<repo>-<branche>` à côté du repo principal (convention observée sur les
+  projets Xefi).
+- Détecte la branche de base (HEAD distant) si non précisée.
+- Crée la branche localement si elle n'existe pas encore, à partir d'`origin/<base>`.
+
+## Lister le statut des worktrees (MR mergée ou non)
+
+```bash
+scripts/wt-clean.sh [chemin-du-repo]
+```
+
+Affiche un tableau `worktree | branche | statut MR` (`none` / `opened` / `closed` / `merged`).
+Les lignes `merged` sont candidates au nettoyage.
+
+**Important : ce script ne supprime jamais rien tout seul.** Il liste, et donne les deux
+commandes à lancer à la main (ou à faire confirmer par l'agent) pour chaque worktree à
+supprimer :
+
+```bash
+git -C <repo-principal> worktree remove <chemin>
+git -C <repo-principal> branch -D <branche>
+```
+
+## Utilisation par un agent Claude Code
+
+Quand cette skill est invoquée :
+1. Pour une demande de création (`crée un worktree pour STK-1234`), lancer `wt-create.sh`
+   avec le nom de branche fourni (ou déduit du ticket) et rapporter le chemin créé.
+2. Pour une demande de nettoyage (`nettoie les worktrees`), lancer `wt-clean.sh`, présenter le
+   tableau, et **ne supprimer une entrée `merged` qu'après confirmation explicite de
+   l'utilisateur pour cette entrée précise** — jamais en boucle silencieuse, même en tâche de
+   fond.
+
+## Automatiser la vérification (optionnel, via /loop)
+
+Pour une vérification périodique sans avoir à y penser, lancer dans Claude Code :
+
+```
+/loop 45m /worktree-manager clean
+```
+
+Ça relance `wt-clean.sh` toutes les 45 minutes et rapporte les worktrees dont la MR vient de
+passer en `merged`. La suppression reste confirmée à chaque fois — le loop ne fait jamais le
+ménage tout seul.
