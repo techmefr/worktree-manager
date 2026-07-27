@@ -5,6 +5,36 @@ repérage de ceux dont la MR GitLab est mergée (donc nettoyables).
 
 Aucune dépendance à un projet précis : ça marche sur n'importe quel repo git.
 
+## C'est quoi un worktree, et pourquoi s'en servir
+
+Un `git worktree`, c'est un deuxième dossier de travail branché sur le **même repo** (même
+historique, mêmes objets git), mais avec sa propre branche checkoutée. Contrairement à un
+`git clone` séparé, ça ne duplique pas le `.git` — juste un checkout de plus.
+
+**Avantages :**
+- Travailler sur plusieurs branches en même temps sans `git stash`/`checkout` à répétition ni
+  perdre l'état de ce qu'on avait en cours.
+- Un environnement (containers, node_modules, IDE ouvert) par tâche, isolé des autres.
+- Revenir sur une urgence (hotfix, review à corriger) sans toucher à la branche sur laquelle
+  on bosse déjà.
+
+**Soucis à connaître :**
+- Ça duplique tout ce qui n'est pas versionné : `node_modules`, `.env`, volumes Docker... donc
+  ça consomme de l'espace disque et demande de re-set up l'environnement à chaque worktree.
+- Les worktrees s'accumulent vite si on ne les nettoie pas une fois la tâche mergée — c'est
+  précisément le problème que cet outil adresse.
+- Sur les stacks Xefi (tout en Docker Compose), les ports/volumes peuvent entrer en collision
+  entre deux worktrees d'un même projet lancés en même temps — à gérer au cas par cas pour
+  l'instant (un outil plus complet est prévu pour ça, voir plus bas).
+
+## Mon approche
+
+Un worktree = une tâche = une branche, créé à côté du repo principal (`wt-<repo>-<branche>`)
+plutôt que dans un sous-dossier caché, pour pouvoir naviguer dedans comme un dossier normal.
+Je ne supprime jamais un worktree à l'aveugle : je vérifie d'abord que sa MR est bien mergée sur
+GitLab, puis je supprime à la main. Rien n'est automatisé côté suppression — l'outil liste et
+propose, il ne décide jamais à ma place.
+
 ## Installation
 
 **Prérequis :**
@@ -77,6 +107,14 @@ Une fois la skill installée dans `~/.claude/skills/worktree-manager/` :
 Relance `wt-clean.sh` toutes les 45 minutes et rapporte les worktrees passés en `merged`.
 La suppression reste toujours confirmée à la main, même en tâche de fond — le loop ne fait
 jamais le ménage tout seul.
+
+## Et après ?
+
+Cet outil reste volontairement simple (scripts bash, aucune interface). Je prépare en parallèle
+un outil plus complet pour gérer les worktrees à plusieurs (état partagé en base, dashboard
+visuel type Portainer pour voir tous les worktrees en cours, leur statut, les lancer/nettoyer
+sans passer par la ligne de commande). Ce README sera mis à jour quand il sera prêt — en
+attendant, `worktree-manager` fait le job au quotidien sans rien à installer de lourd.
 
 ## Contenu du dossier
 
