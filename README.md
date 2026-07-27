@@ -18,10 +18,10 @@ mêmes commits, mêmes objets git en interne), mais avec sa **propre branche che
 Concrètement :
 
 ```bash
-git worktree add ../wt-mon-repo-STK-1234 -b STK-1234-ma-feature origin/develop
+git worktree add ../wt-mon-repo-ma-tache -b ma-feature origin/develop
 ```
 
-crée un dossier `../wt-mon-repo-STK-1234` à côté du repo, déjà sur la bonne branche, prêt à
+crée un dossier `../wt-mon-repo-ma-tache` à côté du repo, déjà sur la bonne branche, prêt à
 travailler — sans toucher au dossier principal. C'est un checkout en plus, **pas** un clone
 complet : pas de nouveau `.git` à télécharger, juste un pointeur de plus dans le repo existant.
 
@@ -36,8 +36,9 @@ complet : pas de nouveau `.git` à télécharger, juste un pointeur de plus dans
   ça consomme de l'espace disque et demande de re-set up l'environnement à chaque worktree.
 - Les worktrees s'accumulent vite si on ne les nettoie pas une fois la tâche mergée — c'est
   précisément le problème que cet outil adresse.
-- Sur les stacks Xefi (tout en Docker Compose), faire tourner deux worktrees d'un même projet
-  **en même temps** fait collisionner les ports/volumes — voir la section dédiée ci-dessous.
+- Si ton projet tourne dans des containers (Docker Compose ou équivalent), faire tourner deux
+  worktrees du même projet **en même temps** fait collisionner les ports/volumes — voir la
+  section dédiée ci-dessous.
 
 ## Mon approche
 
@@ -49,22 +50,22 @@ propose, il ne décide jamais à ma place.
 
 ## Faire tourner la stack d'un worktree (ports et URLs)
 
-Le worktree isole ton **code**, pas ton **environnement d'exécution**. Sur les projets Xefi
-(Laravel Sail, Nuxt, tout en Docker Compose), chaque stack lit des ports fixes dans son `.env`
-(`APP_PORT`, `FORWARD_DB_PORT`, etc.). Si tu lances la stack du worktree principal **et** celle
-d'un worktree en même temps, elles essaient d'écouter sur les **mêmes ports** → collision, l'une
-des deux ne démarre pas ou écrase l'autre.
+Le worktree isole ton **code**, pas ton **environnement d'exécution**. Si ton projet tourne dans
+des containers (Docker Compose ou équivalent), chaque stack lit des ports fixes dans sa config
+(souvent un `.env`). Si tu lances la stack du worktree principal **et** celle d'un worktree en
+même temps, elles essaient d'écouter sur les **mêmes ports** → collision, l'une des deux ne
+démarre pas ou écrase l'autre.
 
 **Ce que ça veut dire en pratique aujourd'hui :**
-- **Une seule stack Docker à la fois par projet.** Avant de lancer la stack d'un worktree,
-  arrête celle du repo principal (ou de l'autre worktree) sur ce même projet.
+- **Une seule stack à la fois par projet.** Avant de lancer la stack d'un worktree, arrête
+  celle du repo principal (ou de l'autre worktree) sur ce même projet.
 - Si tu as vraiment besoin de deux stacks du même projet en parallèle, il faut modifier les
-  ports dans le `.env` du worktree (offset manuel, ex: `APP_PORT=8283` au lieu de `8282`) — à
-  faire à la main, projet par projet, pas automatisé pour l'instant.
-- Certains projets (`platform`, `pilota`) ont déjà un Traefik devant, qui route par nom plutôt
-  que par port — sur ceux-là le souci est moins présent, mais vérifie quand même avant de
-  lancer deux stacks en parallèle.
-- Utilise toujours l'URL/le port définis par le `.env` **du worktree où tu es**, pas celui du
+  ports dans la config du worktree (offset manuel, ex: `8081` au lieu de `8080`) — à faire à la
+  main, projet par projet, pas automatisé pour l'instant.
+- Si un reverse proxy (Traefik ou équivalent) est déjà en place devant le projet, il route
+  souvent par nom plutôt que par port — le souci est moins présent, mais vérifie quand même
+  avant de lancer deux stacks en parallèle.
+- Utilise toujours l'URL/le port définis par la config **du worktree où tu es**, pas celui du
   repo principal — sinon tu te retrouves à appeler l'API du mauvais worktree sans t'en rendre
   compte (bug fantôme classique).
 
@@ -111,10 +112,10 @@ scripts/wt-create.sh <nom-branche> [chemin-du-repo] [branche-de-base]
 Exemple :
 ```bash
 cd ~/mon-repo
-~/.claude/skills/worktree-manager/scripts/wt-create.sh STK-1234-mon-ticket
+~/.claude/skills/worktree-manager/scripts/wt-create.sh ma-feature
 ```
 
-Ça crée un dossier `wt-mon-repo-STK-1234-mon-ticket` juste à côté du repo, avec la branche déjà
+Ça crée un dossier `wt-mon-repo-ma-feature` juste à côté du repo, avec la branche déjà
 checkoutée dessus.
 
 ### Voir quels worktrees peuvent être nettoyés
