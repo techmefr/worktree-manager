@@ -14,16 +14,18 @@ Aucune dépendance à un projet précis : ça marche sur n'importe quel repo git
 **Étapes :**
 
 ```bash
-tar -xzf worktree-manager.tar.gz
+git clone https://github.com/techmefr/worktree-manager.git
 chmod +x worktree-manager/scripts/*.sh worktree-manager/scripts/*.py
 ```
 
-Si tu utilises Claude Code, déplace le dossier dans `~/.claude/skills/` pour que la skill soit
+Si tu utilises Claude Code, clone-le directement dans `~/.claude/skills/` pour que la skill soit
 disponible automatiquement :
 
 ```bash
-mv worktree-manager ~/.claude/skills/worktree-manager
+git clone https://github.com/techmefr/worktree-manager.git ~/.claude/skills/worktree-manager
 ```
+
+Pour mettre à jour plus tard : `git -C ~/.claude/skills/worktree-manager pull`.
 
 Sinon, garde le dossier où tu veux et appelle les scripts directement avec leur chemin complet.
 
