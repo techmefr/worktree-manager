@@ -1,163 +1,100 @@
 # Worktree Manager
 
 Petit outil autonome pour gérer les git worktrees au quotidien : création à la demande, et
-repérage de ceux dont la MR GitLab est mergée (donc nettoyables).
+repérage de ceux dont la MR GitLab est mergée (donc nettoyables). Marche sur n'importe quel
+repo git.
 
-Aucune dépendance à un projet précis : ça marche sur n'importe quel repo git.
+## Un worktree, c'est quoi
 
-## C'est quoi un worktree (le cours en 2 minutes)
+Un repo classique = un dossier = une branche à la fois. Un `git worktree` ajoute un **deuxième
+dossier** sur le **même repo**, avec sa propre branche checkoutée — pas de clone, pas de
+`.git` en plus.
 
-Normalement, un repo git = un seul dossier = une seule branche checkoutée à la fois. Si tu dois
-changer de branche, tu fais `git checkout` et le contenu du dossier change à ta place. Ça marche,
-mais dès que tu as du travail en cours (fichiers modifiés non commités) et qu'on te demande de
-partir sur autre chose (urgence, review à corriger), c'est la galère : stash, checkout, stash pop,
-en espérant ne rien oublier.
-
-Un `git worktree`, c'est un **deuxième dossier**, branché sur ce même repo (même historique,
-mêmes commits, mêmes objets git en interne), mais avec sa **propre branche checkoutée** dedans.
-Concrètement :
-
-```bash
-git worktree add ../wt-mon-repo-ma-tache -b ma-feature origin/develop
+```mermaid
+flowchart LR
+    subgraph repo[" Même repo git "]
+        A["repo principal<br/>branche: develop"]
+        B["wt-repo-feature-x<br/>branche: feature-x"]
+        C["wt-repo-hotfix<br/>branche: hotfix"]
+    end
 ```
 
-crée un dossier `../wt-mon-repo-ma-tache` à côté du repo, déjà sur la bonne branche, prêt à
-travailler — sans toucher au dossier principal. C'est un checkout en plus, **pas** un clone
-complet : pas de nouveau `.git` à télécharger, juste un pointeur de plus dans le repo existant.
+**Avantages**
+- Plusieurs branches en parallèle, chacune dans son dossier, sans stash/checkout.
+- Environnement isolé par tâche.
+- Traiter une urgence sans toucher au travail en cours ailleurs.
 
-**Avantages :**
-- Travailler sur plusieurs branches/tâches en même temps, chacune dans son propre dossier, sans
-  jamais perdre l'état de ce qu'on avait en cours ailleurs.
-- Un environnement isolé par tâche (containers, `node_modules`, fenêtre IDE ouverte).
-- Revenir sur une urgence sans toucher à la branche sur laquelle on est déjà en train de bosser.
-
-**Inconvénients / pièges :**
-- Ça duplique tout ce qui n'est pas versionné : `node_modules`, `.env`, volumes Docker... donc
-  ça consomme de l'espace disque et demande de re-set up l'environnement à chaque worktree.
-- Les worktrees s'accumulent vite si on ne les nettoie pas une fois la tâche mergée — c'est
-  précisément le problème que cet outil adresse.
-- Si ton projet tourne dans des containers (Docker Compose ou équivalent), faire tourner deux
-  worktrees du même projet **en même temps** fait collisionner les ports/volumes — voir la
-  section dédiée ci-dessous.
+**Inconvénients**
+- Duplique tout ce qui n'est pas versionné (`node_modules`, `.env`) → espace disque + re-setup.
+- S'accumulent vite si non nettoyés une fois mergés.
+- Deux worktrees du même projet lancés en même temps (containers) → collision de ports.
 
 ## Mon approche
 
-Un worktree = une tâche = une branche, créé à côté du repo principal (`wt-<repo>-<branche>`)
-plutôt que dans un sous-dossier caché, pour pouvoir naviguer dedans comme un dossier normal.
-Je ne supprime jamais un worktree à l'aveugle : je vérifie d'abord que sa MR est bien mergée sur
-GitLab, puis je supprime à la main. Rien n'est automatisé côté suppression — l'outil liste et
-propose, il ne décide jamais à ma place.
+```mermaid
+flowchart LR
+    a[wt-create.sh] --> b[travail sur la branche]
+    b --> c[MR ouverte]
+    c -->|mergée| d[wt-clean.sh la repère]
+    d --> e["suppression manuelle<br/>(jamais automatique)"]
+```
 
-## Faire tourner la stack d'un worktree (ports et URLs)
+Un worktree = une tâche = une branche, à côté du repo (`wt-<repo>-<branche>`). Jamais de
+suppression sans vérifier d'abord que la MR est mergée.
 
-Le worktree isole ton **code**, pas ton **environnement d'exécution**. Si ton projet tourne dans
-des containers (Docker Compose ou équivalent), chaque stack lit des ports fixes dans sa config
-(souvent un `.env`). Si tu lances la stack du worktree principal **et** celle d'un worktree en
-même temps, elles essaient d'écouter sur les **mêmes ports** → collision, l'une des deux ne
-démarre pas ou écrase l'autre.
+## Ports et URLs
 
-**Ce que ça veut dire en pratique aujourd'hui :**
-- **Une seule stack à la fois par projet.** Avant de lancer la stack d'un worktree, arrête
-  celle du repo principal (ou de l'autre worktree) sur ce même projet.
-- Si tu as vraiment besoin de deux stacks du même projet en parallèle, il faut modifier les
-  ports dans la config du worktree (offset manuel, ex: `8081` au lieu de `8080`) — à faire à la
-  main, projet par projet, pas automatisé pour l'instant.
-- Si un reverse proxy (Traefik ou équivalent) est déjà en place devant le projet, il route
-  souvent par nom plutôt que par port — le souci est moins présent, mais vérifie quand même
-  avant de lancer deux stacks en parallèle.
-- Utilise toujours l'URL/le port définis par la config **du worktree où tu es**, pas celui du
-  repo principal — sinon tu te retrouves à appeler l'API du mauvais worktree sans t'en rendre
-  compte (bug fantôme classique).
+Le worktree isole le **code**, pas l'**environnement d'exécution**. Si le projet tourne en
+containers, deux stacks du même projet lancées en même temps collisionnent sur les mêmes ports.
 
-Ce point de friction (pas de vraie isolation réseau par worktree) est justement ce que l'outil
-plus complet mentionné plus bas doit résoudre, via un système d'URLs propres par
-projet/worktree sans gestion manuelle de ports.
+- Une seule stack à la fois par projet (arrêter l'autre avant de lancer).
+- Besoin des deux en parallèle → offset manuel des ports dans la config du worktree.
+- Reverse proxy déjà en place (Traefik...) → moins de souci, mais vérifier quand même.
+- Toujours utiliser l'URL/port **du worktree où tu es**, pas celui du repo principal.
+
+Un outil plus complet (voir plus bas) doit régler ça via des URLs propres par worktree, sans
+gestion manuelle de ports.
 
 ## Installation
 
-**Prérequis :**
-- `glab` installé et authentifié sur l'instance GitLab du repo (`glab auth status` doit être vert)
-- `python3` disponible
-
-**Étapes :**
-
-```bash
-git clone https://github.com/techmefr/worktree-manager.git
-chmod +x worktree-manager/scripts/*.sh worktree-manager/scripts/*.py
-```
-
-Si tu utilises Claude Code, clone-le directement dans `~/.claude/skills/` pour que la skill soit
-disponible automatiquement :
+Prérequis : `glab` authentifié (`glab auth status`), `python3`.
 
 ```bash
 git clone https://github.com/techmefr/worktree-manager.git ~/.claude/skills/worktree-manager
+chmod +x ~/.claude/skills/worktree-manager/scripts/*.sh ~/.claude/skills/worktree-manager/scripts/*.py
 ```
 
-Pour mettre à jour plus tard : `git -C ~/.claude/skills/worktree-manager pull`.
-
-Sinon, garde le dossier où tu veux et appelle les scripts directement avec leur chemin complet.
+(Sans Claude Code : clone où tu veux, appelle les scripts par leur chemin.)
 
 ## Utilisation
 
-### Créer un worktree pour une tâche
-
+**Créer un worktree :**
 ```bash
 scripts/wt-create.sh <nom-branche> [chemin-du-repo] [branche-de-base]
 ```
 
-- `<nom-branche>` : le nom de la branche à créer (ou existante)
-- `[chemin-du-repo]` : optionnel, repo courant par défaut
-- `[branche-de-base]` : optionnel, détecte automatiquement la branche par défaut du repo sinon
-
-Exemple :
-```bash
-cd ~/mon-repo
-~/.claude/skills/worktree-manager/scripts/wt-create.sh ma-feature
-```
-
-Ça crée un dossier `wt-mon-repo-ma-feature` juste à côté du repo, avec la branche déjà
-checkoutée dessus.
-
-### Voir quels worktrees peuvent être nettoyés
-
+**Voir ce qui peut être nettoyé :**
 ```bash
 scripts/wt-clean.sh [chemin-du-repo]
 ```
-
-Affiche un tableau `worktree | branche | statut MR` (`none` / `opened` / `closed` / `merged`).
-
-**Le script ne supprime jamais rien tout seul.** Pour chaque ligne en `merged`, il suffit de
-lancer à la main (depuis le repo principal) :
-
+Affiche `worktree | branche | statut MR`. Pour une ligne `merged`, à la main :
 ```bash
 git worktree remove <chemin>
 git branch -D <branche>
 ```
 
-### Automatiser la vérification (Claude Code uniquement, optionnel)
-
-Une fois la skill installée dans `~/.claude/skills/worktree-manager/` :
-
+**Vérification auto (Claude Code, optionnel) :**
 ```
 /loop 45m /worktree-manager clean
 ```
-
-Relance `wt-clean.sh` toutes les 45 minutes et rapporte les worktrees passés en `merged`.
-La suppression reste toujours confirmée à la main, même en tâche de fond — le loop ne fait
-jamais le ménage tout seul.
+La suppression reste toujours confirmée à la main.
 
 ## Et après ?
 
-Cet outil reste volontairement simple (scripts bash, aucune interface). Je prépare en parallèle
-un outil plus complet pour gérer les worktrees à plusieurs (état partagé en base, dashboard
-visuel type Portainer pour voir tous les worktrees en cours, leur statut, les lancer/nettoyer
-sans passer par la ligne de commande). Ce README sera mis à jour quand il sera prêt — en
-attendant, `worktree-manager` fait le job au quotidien sans rien à installer de lourd.
+Outil volontairement simple. Un outil plus complet est prévu pour gérer les worktrees à
+plusieurs : état partagé en base, dashboard visuel type Portainer, URLs propres par worktree.
 
-## Contenu du dossier
+## Contenu
 
-- `SKILL.md` — instructions pour un agent Claude Code (utilisé automatiquement si le dossier
-  est dans `~/.claude/skills/`)
-- `scripts/wt-create.sh` — création de worktree
-- `scripts/wt-clean.sh` — listing + statut MR des worktrees
-- `scripts/wt-mr-status.py` — parsing du JSON `glab mr list` (utilisé par `wt-clean.sh`)
+- `SKILL.md` — instructions pour un agent Claude Code
+- `scripts/wt-create.sh` / `wt-clean.sh` / `wt-mr-status.py`
