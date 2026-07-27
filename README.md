@@ -5,27 +5,39 @@ repérage de ceux dont la MR GitLab est mergée (donc nettoyables).
 
 Aucune dépendance à un projet précis : ça marche sur n'importe quel repo git.
 
-## C'est quoi un worktree, et pourquoi s'en servir
+## C'est quoi un worktree (le cours en 2 minutes)
 
-Un `git worktree`, c'est un deuxième dossier de travail branché sur le **même repo** (même
-historique, mêmes objets git), mais avec sa propre branche checkoutée. Contrairement à un
-`git clone` séparé, ça ne duplique pas le `.git` — juste un checkout de plus.
+Normalement, un repo git = un seul dossier = une seule branche checkoutée à la fois. Si tu dois
+changer de branche, tu fais `git checkout` et le contenu du dossier change à ta place. Ça marche,
+mais dès que tu as du travail en cours (fichiers modifiés non commités) et qu'on te demande de
+partir sur autre chose (urgence, review à corriger), c'est la galère : stash, checkout, stash pop,
+en espérant ne rien oublier.
+
+Un `git worktree`, c'est un **deuxième dossier**, branché sur ce même repo (même historique,
+mêmes commits, mêmes objets git en interne), mais avec sa **propre branche checkoutée** dedans.
+Concrètement :
+
+```bash
+git worktree add ../wt-mon-repo-STK-1234 -b STK-1234-ma-feature origin/develop
+```
+
+crée un dossier `../wt-mon-repo-STK-1234` à côté du repo, déjà sur la bonne branche, prêt à
+travailler — sans toucher au dossier principal. C'est un checkout en plus, **pas** un clone
+complet : pas de nouveau `.git` à télécharger, juste un pointeur de plus dans le repo existant.
 
 **Avantages :**
-- Travailler sur plusieurs branches en même temps sans `git stash`/`checkout` à répétition ni
-  perdre l'état de ce qu'on avait en cours.
-- Un environnement (containers, node_modules, IDE ouvert) par tâche, isolé des autres.
-- Revenir sur une urgence (hotfix, review à corriger) sans toucher à la branche sur laquelle
-  on bosse déjà.
+- Travailler sur plusieurs branches/tâches en même temps, chacune dans son propre dossier, sans
+  jamais perdre l'état de ce qu'on avait en cours ailleurs.
+- Un environnement isolé par tâche (containers, `node_modules`, fenêtre IDE ouverte).
+- Revenir sur une urgence sans toucher à la branche sur laquelle on est déjà en train de bosser.
 
-**Soucis à connaître :**
+**Inconvénients / pièges :**
 - Ça duplique tout ce qui n'est pas versionné : `node_modules`, `.env`, volumes Docker... donc
   ça consomme de l'espace disque et demande de re-set up l'environnement à chaque worktree.
 - Les worktrees s'accumulent vite si on ne les nettoie pas une fois la tâche mergée — c'est
   précisément le problème que cet outil adresse.
-- Sur les stacks Xefi (tout en Docker Compose), les ports/volumes peuvent entrer en collision
-  entre deux worktrees d'un même projet lancés en même temps — à gérer au cas par cas pour
-  l'instant (un outil plus complet est prévu pour ça, voir plus bas).
+- Sur les stacks Xefi (tout en Docker Compose), faire tourner deux worktrees d'un même projet
+  **en même temps** fait collisionner les ports/volumes — voir la section dédiée ci-dessous.
 
 ## Mon approche
 
@@ -34,6 +46,31 @@ plutôt que dans un sous-dossier caché, pour pouvoir naviguer dedans comme un d
 Je ne supprime jamais un worktree à l'aveugle : je vérifie d'abord que sa MR est bien mergée sur
 GitLab, puis je supprime à la main. Rien n'est automatisé côté suppression — l'outil liste et
 propose, il ne décide jamais à ma place.
+
+## Faire tourner la stack d'un worktree (ports et URLs)
+
+Le worktree isole ton **code**, pas ton **environnement d'exécution**. Sur les projets Xefi
+(Laravel Sail, Nuxt, tout en Docker Compose), chaque stack lit des ports fixes dans son `.env`
+(`APP_PORT`, `FORWARD_DB_PORT`, etc.). Si tu lances la stack du worktree principal **et** celle
+d'un worktree en même temps, elles essaient d'écouter sur les **mêmes ports** → collision, l'une
+des deux ne démarre pas ou écrase l'autre.
+
+**Ce que ça veut dire en pratique aujourd'hui :**
+- **Une seule stack Docker à la fois par projet.** Avant de lancer la stack d'un worktree,
+  arrête celle du repo principal (ou de l'autre worktree) sur ce même projet.
+- Si tu as vraiment besoin de deux stacks du même projet en parallèle, il faut modifier les
+  ports dans le `.env` du worktree (offset manuel, ex: `APP_PORT=8283` au lieu de `8282`) — à
+  faire à la main, projet par projet, pas automatisé pour l'instant.
+- Certains projets (`platform`, `pilota`) ont déjà un Traefik devant, qui route par nom plutôt
+  que par port — sur ceux-là le souci est moins présent, mais vérifie quand même avant de
+  lancer deux stacks en parallèle.
+- Utilise toujours l'URL/le port définis par le `.env` **du worktree où tu es**, pas celui du
+  repo principal — sinon tu te retrouves à appeler l'API du mauvais worktree sans t'en rendre
+  compte (bug fantôme classique).
+
+Ce point de friction (pas de vraie isolation réseau par worktree) est justement ce que l'outil
+plus complet mentionné plus bas doit résoudre, via un système d'URLs propres par
+projet/worktree sans gestion manuelle de ports.
 
 ## Installation
 
