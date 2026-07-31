@@ -1,6 +1,6 @@
 ---
 name: worktree-manager
-description: Créer un git worktree pour une tâche, et lister/nettoyer les worktrees dont la branche a une MR GitLab mergée. Déclencheurs : "crée un worktree", "nettoie les worktrees", "worktree pour STK-xxx".
+description: Créer un git worktree pour une tâche, et lister/nettoyer les worktrees dont la branche a une MR GitLab mergée. Déclencheurs : "crée un worktree", "nettoie les worktrees", "worktree pour <ticket>".
 ---
 
 # Worktree Manager
@@ -17,10 +17,13 @@ Prérequis : `glab` installé et authentifié sur l'instance GitLab du repo (`gl
 scripts/wt-create.sh <nom-branche> [chemin-du-repo] [branche-de-base]
 ```
 
-- Crée un dossier `wt-<repo>-<branche>` à côté du repo principal (convention observée sur les
-  projets Xefi).
+- Crée un dossier `wt-<repo>-<branche>` à côté du repo principal.
 - Détecte la branche de base (HEAD distant) si non précisée.
 - Crée la branche localement si elle n'existe pas encore, à partir d'`origin/<base>`.
+- Si `package-lock.json`/`composer.lock` sont identiques à ceux du repo principal, symlink
+  `node_modules`/`vendor` depuis le repo principal au lieu de les laisser vides (pas de
+  réinstall inutile). Si un lockfile diffère, l'affiche en clair : installer normalement dans
+  ce cas précis, ne jamais symlinker malgré tout.
 
 ## Lister le statut des worktrees (MR mergée ou non)
 
@@ -43,12 +46,15 @@ git -C <repo-principal> branch -D <branche>
 ## Utilisation par un agent Claude Code
 
 Quand cette skill est invoquée :
-1. Pour une demande de création (`crée un worktree pour STK-1234`), lancer `wt-create.sh`
-   avec le nom de branche fourni (ou déduit du ticket) et rapporter le chemin créé.
+1. Pour une demande de création (`crée un worktree pour <ticket>`), lancer `wt-create.sh`
+   avec le nom de branche fourni (ou déduit du ticket) et rapporter le chemin créé, ainsi que
+   ce qui a été fait pour `node_modules`/`vendor` (symlinké, ou à installer si lockfile différent).
 2. Pour une demande de nettoyage (`nettoie les worktrees`), lancer `wt-clean.sh`, présenter le
    tableau, et **ne supprimer une entrée `merged` qu'après confirmation explicite de
    l'utilisateur pour cette entrée précise** — jamais en boucle silencieuse, même en tâche de
    fond.
+3. Ne jamais forcer un symlink de dépendances si `wt-create.sh` a signalé un lockfile différent
+   — laisser l'utilisateur installer normalement dans ce cas.
 
 ## Automatiser la vérification (optionnel, via /loop)
 
