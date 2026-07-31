@@ -25,7 +25,9 @@ flowchart LR
 - Traiter une urgence sans toucher au travail en cours ailleurs.
 
 **Inconvénients**
-- Duplique tout ce qui n'est pas versionné (`node_modules`, `.env`) → espace disque + re-setup.
+- Duplique tout ce qui n'est pas versionné (`node_modules`, `vendor`, `.env`) → un nouveau
+  worktree ne les a pas, et `npm ci`/`composer install` referaient tout le travail pour rien
+  si le lockfile n'a pas changé (voir plus bas : `wt-create.sh` symlink au lieu de réinstaller).
 - S'accumulent vite si non nettoyés une fois mergés.
 - Deux worktrees du même projet lancés en même temps (containers) → collision de ports.
 
@@ -72,6 +74,10 @@ chmod +x ~/.claude/skills/worktree-manager/scripts/*.sh ~/.claude/skills/worktre
 ```bash
 scripts/wt-create.sh <nom-branche> [chemin-du-repo] [branche-de-base]
 ```
+Si `package-lock.json`/`composer.lock` sont identiques à ceux du repo principal, `node_modules`
+et `vendor` sont symlinkés depuis le repo principal au lieu d'être réinstallés (rapide, et sans
+risque tant qu'on ne touche pas aux dépendances). Sinon un message le signale : installe-les
+normalement dans ce cas.
 
 **Voir ce qui peut être nettoyé :**
 ```bash

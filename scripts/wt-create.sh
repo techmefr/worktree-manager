@@ -40,4 +40,26 @@ fi
 echo
 echo "Worktree cree : $WT_PATH"
 echo "Branche        : $BRANCH (base: $BASE_BRANCH)"
+
+# node_modules/vendor sont ignores par git : le worktree demarre sans eux. Tant que le
+# lockfile est identique a celui du repo principal, les dependances installees n'ont pas
+# bouge -> on symlink au lieu de refaire un install complet (lent, et inutile ici).
+link_deps_if_unchanged() {
+    local dep_dir="$1" lock_file="$2"
+
+    [ -e "$REPO_ABS/$dep_dir" ] || return 0
+    [ -f "$REPO_ABS/$lock_file" ] || return 0
+    [ -f "$WT_PATH/$lock_file" ] || return 0
+
+    if cmp -s "$REPO_ABS/$lock_file" "$WT_PATH/$lock_file"; then
+        ln -s "$REPO_ABS/$dep_dir" "$WT_PATH/$dep_dir"
+        echo "-> $dep_dir symlinke depuis le repo principal ($lock_file identique)."
+    else
+        echo "-> $lock_file differe du repo principal : $dep_dir non symlinke, installe-le normalement."
+    fi
+}
+
+link_deps_if_unchanged "node_modules" "package-lock.json"
+link_deps_if_unchanged "vendor" "composer.lock"
+
 echo "-> cd $WT_PATH pour commencer a travailler."
