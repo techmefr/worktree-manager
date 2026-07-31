@@ -59,7 +59,8 @@ gestion manuelle de ports.
 
 ## Installation
 
-Prérequis : `glab` authentifié (`glab auth status`), `python3`.
+Prérequis : `python3`, et selon l'hébergeur du repo (auto-détecté sur l'URL du remote) :
+`glab` authentifié pour GitLab, ou `gh` authentifié pour GitHub.
 
 ```bash
 git clone https://github.com/techmefr/worktree-manager.git ~/.claude/skills/worktree-manager
@@ -83,7 +84,8 @@ normalement dans ce cas.
 ```bash
 scripts/wt-clean.sh [chemin-du-repo]
 ```
-Affiche `worktree | branche | statut MR`. Pour une ligne `merged`, à la main :
+Marche sur GitLab et GitHub (détecte l'hébergeur via l'URL du remote). Affiche
+`worktree | branche | statut MR/PR`. Pour une ligne `merged`, à la main :
 ```bash
 git worktree remove <chemin>
 git branch -D <branche>

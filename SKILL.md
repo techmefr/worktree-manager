@@ -5,11 +5,13 @@ description: Créer un git worktree pour une tâche, et lister/nettoyer les work
 
 # Worktree Manager
 
-Outil autonome (bash + glab + python3, aucune dépendance externe) pour gérer les worktrees
-git au quotidien : création à la demande, et repérage de ceux à nettoyer une fois la MR mergée.
+Outil autonome (bash + python3, plus `glab` ou `gh` selon l'hébergeur) pour gérer les worktrees
+git au quotidien : création à la demande, et repérage de ceux à nettoyer une fois la MR/PR mergée.
+Fonctionne sur GitLab (n'importe quelle instance) et GitHub — l'hébergeur est détecté automatiquement
+depuis l'URL du remote `origin`.
 
-Prérequis : `glab` installé et authentifié sur l'instance GitLab du repo (`glab auth status`),
-`python3` disponible.
+Prérequis : `python3` disponible, et `glab` (GitLab) ou `gh` (GitHub) authentifié selon le repo
+(`glab auth status` / `gh auth status`).
 
 ## Créer un worktree
 
@@ -25,13 +27,13 @@ scripts/wt-create.sh <nom-branche> [chemin-du-repo] [branche-de-base]
   réinstall inutile). Si un lockfile diffère, l'affiche en clair : installer normalement dans
   ce cas précis, ne jamais symlinker malgré tout.
 
-## Lister le statut des worktrees (MR mergée ou non)
+## Lister le statut des worktrees (MR/PR mergée ou non)
 
 ```bash
 scripts/wt-clean.sh [chemin-du-repo]
 ```
 
-Affiche un tableau `worktree | branche | statut MR` (`none` / `opened` / `closed` / `merged`).
+Affiche un tableau `worktree | branche | statut MR/PR` (`none` / `opened` / `closed` / `merged`).
 Les lignes `merged` sont candidates au nettoyage.
 
 **Important : ce script ne supprime jamais rien tout seul.** Il liste, et donne les deux
